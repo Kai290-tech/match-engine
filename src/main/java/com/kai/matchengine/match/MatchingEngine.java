@@ -207,6 +207,7 @@ public final class MatchingEngine {
         restLimit(cmd, remaining, filled, out);
         resting = true;
       } else {
+        // MARKET 与 IOC：剩余不入簿。
         cancelMarketRemainder(cmd, filled, out);
         remaining = 0L;
       }
@@ -292,7 +293,7 @@ public final class MatchingEngine {
     if (cmd.qty() <= 0) {
       return RejectReason.INVALID_QTY;
     }
-    if (cmd.orderType() == OrderType.LIMIT && cmd.priceTick() <= 0) {
+    if (requiresPrice(cmd.orderType()) && cmd.priceTick() <= 0) {
       return RejectReason.INVALID_PRICE;
     }
     if (book.contains(cmd.orderId()) || recentOrderIds.contains(cmd.orderId())) {
@@ -420,7 +421,7 @@ public final class MatchingEngine {
             cmd.orderId(),
             cmd.userId(),
             cmd.side(),
-            cmd.orderType() == OrderType.LIMIT ? cmd.priceTick() : 0L,
+            cmd.orderType() == OrderType.MARKET ? 0L : cmd.priceTick(),
             0L,
             filled,
             OrderUpdateType.FILLED));
@@ -431,6 +432,11 @@ public final class MatchingEngine {
     long levelQty =
         side == Side.BID ? book.bidLevelQty(priceTick) : book.askLevelQty(priceTick);
     out.add(new BookUpdate(bookVersion, eventTime, book.symbol(), side, priceTick, levelQty));
+  }
+
+  /** LIMIT 与 IOC 必须带正价格；MARKET 忽略价格。 */
+  private static boolean requiresPrice(OrderType orderType) {
+    return orderType == OrderType.LIMIT || orderType == OrderType.IOC;
   }
 
   private boolean crosses(PlaceOrder cmd) {

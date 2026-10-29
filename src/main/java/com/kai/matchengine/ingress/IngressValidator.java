@@ -38,8 +38,9 @@ public final class IngressValidator {
     if (p.qty() <= 0) {
       throw new IngressException(IngressRejectReason.INVALID_QTY, "qty must be > 0");
     }
-    if (p.orderType() == OrderType.LIMIT && p.priceTick() <= 0) {
-      throw new IngressException(IngressRejectReason.INVALID_PRICE, "limit priceTick must be > 0");
+    if (requiresPrice(p.orderType()) && p.priceTick() <= 0) {
+      throw new IngressException(
+          IngressRejectReason.INVALID_PRICE, "limit/ioc priceTick must be > 0");
     }
   }
 
@@ -72,6 +73,10 @@ public final class IngressValidator {
     if (code.trim().length() > 16) {
       throw new IngressException(IngressRejectReason.INVALID_SYMBOL_CODE, "code length > 16");
     }
+  }
+
+  private static boolean requiresPrice(OrderType orderType) {
+    return orderType == OrderType.LIMIT || orderType == OrderType.IOC;
   }
 
   private void requirePositiveSymbolId(int symbolId) throws IngressException {

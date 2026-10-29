@@ -365,4 +365,25 @@ class SbeIngressTest {
     assertEquals(777L, decodedCancel.clientRequestId());
   }
 
+  @Test
+  void encodeDecode_ioc_roundTrip() throws Exception {
+    PlaceOrder original =
+        new PlaceOrder(1, 8L, 80L, 9L, Side.ASK, OrderType.IOC, 250L, 4L);
+    PlaceOrder decoded = assertInstanceOf(PlaceOrder.class, codec.decode(encoder.encode(original)));
+    assertEquals(OrderType.IOC, decoded.orderType());
+    assertEquals(250L, decoded.priceTick());
+    assertEquals(4L, decoded.qty());
+  }
+
+  @Test
+  void validator_ioc_requiresPositivePrice() throws Exception {
+    validator.validate(new PlaceOrder(1, 1, 1, 1, Side.BID, OrderType.IOC, 100, 1));
+    assertEquals(
+        IngressRejectReason.INVALID_PRICE,
+        assertThrows(
+                IngressException.class,
+                () -> validator.validate(new PlaceOrder(1, 1, 1, 1, Side.BID, OrderType.IOC, 0, 1)))
+            .reason());
+  }
+
 }
