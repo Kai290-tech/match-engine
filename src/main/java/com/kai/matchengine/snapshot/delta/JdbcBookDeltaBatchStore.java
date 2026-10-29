@@ -41,7 +41,7 @@ public final class JdbcBookDeltaBatchStore implements BookDeltaBatchStore {
             batch_id BIGINT NOT NULL,
             symbol_id INT NOT NULL,
             encoding VARCHAR(16) NOT NULL,
-            payload VARBINARY(16777215) NOT NULL,
+            payload MEDIUMBLOB NOT NULL,
             PRIMARY KEY (batch_id, symbol_id)
           )
           """);

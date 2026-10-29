@@ -43,7 +43,7 @@ public final class JdbcSnapshotStore implements SnapshotStore {
             section_type VARCHAR(32) NOT NULL,
             section_key VARCHAR(64) NOT NULL DEFAULT '',
             encoding VARCHAR(16) NOT NULL,
-            payload VARBINARY(16777215) NOT NULL,
+            payload MEDIUMBLOB NOT NULL,
             UNIQUE (snapshot_id, section_type, section_key)
           )
           """);
