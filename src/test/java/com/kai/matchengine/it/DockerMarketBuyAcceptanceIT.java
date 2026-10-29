@@ -6,6 +6,7 @@ import static org.junit.jupiter.api.Assertions.assertNotNull;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 import static org.junit.jupiter.api.Assumptions.assumeTrue;
 
+import com.kai.matchengine.event.inbound.CancelOrder;
 import com.kai.matchengine.event.inbound.CreateSymbol;
 import com.kai.matchengine.event.inbound.OrderType;
 import com.kai.matchengine.event.inbound.PlaceOrder;
@@ -73,7 +74,7 @@ import org.junit.jupiter.api.Test;
  * 测试专家验收节点 {@code ME-MKT-BUY-001-T}。
  *
  * <p>经本机 Kafka {@code match_event} 进入撮合，再从 {@code event_result}、{@code trade}、
- * {@code order_update} 读出站。市价买单按计价预算向下取整，成交额不超过预算。
+ * {@code order_update} 读出站。覆盖市价买单的预算与数量、市价卖单、非法预算单位和池满。
  *
  * <p>运行前：{@code docker compose up -d}。
  */
@@ -143,12 +144,12 @@ class DockerMarketBuyAcceptanceIT {
   }
 
   @Test
-  void meMktBuy001T_f23_f24_overKafka() throws Exception {
+  void meMktBuy001T_f04_f23_f26_overKafka() throws Exception {
     assumeTrue(portOpen("localhost", 9092), "Kafka not reachable on :9092 — start docker compose");
     assumeTrue(portOpen("localhost", 3306), "MySQL not reachable on :3306 — start docker compose");
 
     AtomicReference<Throwable> fatal = new AtomicReference<>();
-    EngineRegistry registry = startPipeline(fatal);
+    EngineRegistry registry = startPipeline(fatal, POOL_CAPACITY);
     SbeMatchEventEncoder encoder = new SbeMatchEventEncoder();
     int symbolId = symbolId();
     long req = 1;
@@ -220,10 +221,109 @@ class DockerMarketBuyAcceptanceIT {
     assertEquals(0L, byQty.remainingQty());
     assertFalse(byQty.resting());
     assertTrue(book(registry, symbolId).isEmpty());
+
+    long bidForSell = 910;
+    send(encoder.encode(new PlaceOrder(symbolId, req++, bidForSell, 1, Side.BID, OrderType.LIMIT, 100, 2)));
+    await(fatal, () -> book(registry, symbolId).contains(bidForSell));
+    long marketSell = 911;
+    send(encoder.encode(new PlaceOrder(symbolId, req++, marketSell, 2, Side.ASK, OrderType.MARKET, 0, 5)));
+    await(
+        fatal,
+        () -> place(marketSell) != null && tradeMakerQty(marketSell, bidForSell, 100, 2) && cancelledRemainder(marketSell));
+    PlaceView sold = place(marketSell);
+    assertTrue(sold.accepted(), sold.toString());
+    assertEquals(2L, sold.filledQty());
+    assertEquals(0L, sold.remainingQty());
+    assertFalse(sold.resting());
+    assertEquals(200L, notional(marketSell));
+    assertTrue(book(registry, symbolId).isEmpty());
+
+    long dustAsk = 920;
+    send(encoder.encode(new PlaceOrder(symbolId, req++, dustAsk, 1, Side.ASK, OrderType.LIMIT, 3, 4_000)));
+    await(fatal, () -> book(registry, symbolId).contains(dustAsk));
+    long dustBuy = 921;
+    send(encoder.encode(new PlaceOrder(symbolId, req++, dustBuy, 2, Side.BID, OrderType.MARKET, 0, 10_000, QtyUnit.QUOTE)));
+    await(fatal, () -> place(dustBuy) != null && tradeMakerQty(dustBuy, dustAsk, 3, 3_333) && cancelledRemainder(dustBuy));
+    PlaceView dust = place(dustBuy);
+    assertTrue(dust.accepted(), dust.toString());
+    assertEquals(3_333L, dust.filledQty());
+    assertEquals(9_999L, notional(dustBuy));
+    assertEquals(3_333L, takerFilledDelta(dustBuy, "CANCELLED_REMAINDER"));
+    assertEquals(667L, book(registry, symbolId).get(dustAsk).qty());
+    assertFalse(book(registry, symbolId).contains(dustBuy));
+
+    send(encoder.encode(new CancelOrder(symbolId, req++, dustAsk, 1)));
+    await(fatal, () -> !book(registry, symbolId).contains(dustAsk));
+
+    long firstAsk = 930;
+    long secondAsk = 931;
+    send(encoder.encode(new PlaceOrder(symbolId, req++, firstAsk, 1, Side.ASK, OrderType.LIMIT, 100, 1)));
+    send(encoder.encode(new PlaceOrder(symbolId, req++, secondAsk, 1, Side.ASK, OrderType.LIMIT, 100, 2)));
+    await(fatal, () -> book(registry, symbolId).contains(firstAsk) && book(registry, symbolId).contains(secondAsk));
+    long fifoBuy = 932;
+    send(encoder.encode(new PlaceOrder(symbolId, req++, fifoBuy, 2, Side.BID, OrderType.MARKET, 0, 200, QtyUnit.QUOTE)));
+    await(fatal, () -> tradesFor(fifoBuy).size() == 2 && takerUpdate(fifoBuy, "FILLED"));
+    List<long[]> fifoTrades = tradesFor(fifoBuy);
+    assertEquals(firstAsk, fifoTrades.get(0)[0]);
+    assertEquals(1L, fifoTrades.get(0)[2]);
+    assertEquals(secondAsk, fifoTrades.get(1)[0]);
+    assertEquals(1L, fifoTrades.get(1)[2]);
+    assertEquals(2L, place(fifoBuy).filledQty());
+    assertEquals(200L, notional(fifoBuy));
+    assertEquals(1L, book(registry, symbolId).get(secondAsk).qty());
+    assertFalse(book(registry, symbolId).contains(fifoBuy));
+
+    long restingBid = 940;
+    send(encoder.encode(new PlaceOrder(symbolId, req++, restingBid, 3, Side.BID, OrderType.LIMIT, 50, 2)));
+    await(fatal, () -> book(registry, symbolId).contains(restingBid));
+    long illegalQuote = 950;
+    send(encoder.encode(new PlaceOrder(symbolId, req++, illegalQuote, 2, Side.ASK, OrderType.MARKET, 0, 100, QtyUnit.QUOTE)));
+    long legalSell = 951;
+    send(encoder.encode(new PlaceOrder(symbolId, req++, legalSell, 2, Side.ASK, OrderType.MARKET, 0, 1)));
+    await(fatal, () -> place(legalSell) != null && tradeMakerQty(legalSell, restingBid, 50, 1));
+    assertEquals(null, place(illegalQuote));
+    assertFalse(tradeForTaker(illegalQuote));
+    assertEquals(1L, book(registry, symbolId).get(restingBid).qty());
+    assertEquals(1L, book(registry, symbolId).get(secondAsk).qty());
+    send(encoder.encode(new PlaceOrder(symbolId, req++, illegalQuote, 2, Side.BID, OrderType.LIMIT, 40, 1)));
+    await(fatal, () -> place(illegalQuote) != null && place(illegalQuote).accepted() && book(registry, symbolId).contains(illegalQuote));
     assertEquals(null, fatal.get());
   }
 
-  private EngineRegistry startPipeline(AtomicReference<Throwable> fatal) throws Exception {
+  @Test
+  void meMktBuy001T_f23_poolFull_overKafka() throws Exception {
+    assumeTrue(portOpen("localhost", 9092), "Kafka not reachable on :9092 — start docker compose");
+    assumeTrue(portOpen("localhost", 3306), "MySQL not reachable on :3306 — start docker compose");
+
+    AtomicReference<Throwable> fatal = new AtomicReference<>();
+    EngineRegistry registry = startPipeline(fatal, 1);
+    SbeMatchEventEncoder encoder = new SbeMatchEventEncoder();
+    int symbolId = symbolId();
+    long req = 1;
+
+    send(encoder.encode(new CreateSymbol(symbolId, req++, "MKTPOOL")));
+    await(fatal, () -> registry.contains(symbolId));
+
+    long ask = 510;
+    send(encoder.encode(new PlaceOrder(symbolId, req++, ask, 1, Side.ASK, OrderType.LIMIT, 100, 5)));
+    await(fatal, () -> book(registry, symbolId).contains(ask) && !book(registry, symbolId).hasCapacityForNewOrder());
+
+    long budgetBuy = 511;
+    send(encoder.encode(new PlaceOrder(symbolId, req++, budgetBuy, 2, Side.BID, OrderType.MARKET, 0, 250, QtyUnit.QUOTE)));
+    await(fatal, () -> place(budgetBuy) != null && tradeMakerQty(budgetBuy, ask, 100, 2));
+    PlaceView bought = place(budgetBuy);
+    assertTrue(bought.accepted(), bought.toString());
+    assertFalse("BOOK_FULL".equals(bought.rejectReason()));
+    assertEquals(2L, bought.filledQty());
+    assertEquals(0L, bought.remainingQty());
+    assertFalse(bought.resting());
+    assertEquals(200L, notional(budgetBuy));
+    assertEquals(3L, book(registry, symbolId).get(ask).qty());
+    assertFalse(book(registry, symbolId).contains(budgetBuy));
+    assertEquals(null, fatal.get());
+  }
+
+  private EngineRegistry startPipeline(AtomicReference<Throwable> fatal, int poolCapacity) throws Exception {
     FatalFailureHandler fatalHandler =
         (msg, cause) -> fatal.set(cause != null ? cause : new IllegalStateException(msg));
     dataSource = mysql();
@@ -233,7 +333,7 @@ class DockerMarketBuyAcceptanceIT {
     batchStore.initSchema();
     BookDeltaLog deltaLog = new BookDeltaLog();
     BookDeltaRecorder deltaRecorder = new BookDeltaRecorder(deltaLog);
-    EngineRegistry registry = new EngineRegistry(SystemTimeSource.INSTANCE, POOL_CAPACITY, deltaRecorder);
+    EngineRegistry registry = new EngineRegistry(SystemTimeSource.INSTANCE, poolCapacity, deltaRecorder);
     OutboundWatermark watermark = new OutboundWatermark();
     outboundProducer = OutboundKafkaFactory.createProducer(BOOTSTRAP);
     publisher =
@@ -393,6 +493,35 @@ class DockerMarketBuyAcceptanceIT {
       }
     }
     return false;
+  }
+
+  private long takerFilledDelta(long orderId, String type) {
+    for (byte[] payload : orderUpdates) {
+      if (templateId(payload) != OrderUpdateDecoder.TEMPLATE_ID) {
+        continue;
+      }
+      OrderUpdateDecoder decoder = new OrderUpdateDecoder();
+      decoder.wrapAndApplyHeader(new UnsafeBuffer(payload), 0, new MessageHeaderDecoder());
+      if (decoder.orderId() == orderId && type.equals(decoder.updateType().name())) {
+        return decoder.filledDelta();
+      }
+    }
+    return -1L;
+  }
+
+  private List<long[]> tradesFor(long takerOrderId) {
+    List<long[]> found = new ArrayList<>();
+    for (byte[] payload : trades) {
+      if (templateId(payload) != TradeDecoder.TEMPLATE_ID) {
+        continue;
+      }
+      TradeDecoder decoder = new TradeDecoder();
+      decoder.wrapAndApplyHeader(new UnsafeBuffer(payload), 0, new MessageHeaderDecoder());
+      if (decoder.takerOrderId() == takerOrderId) {
+        found.add(new long[] {decoder.makerOrderId(), decoder.priceTick(), decoder.qty()});
+      }
+    }
+    return found;
   }
 
   private boolean tradeForTaker(long takerOrderId) {
