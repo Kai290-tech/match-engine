@@ -4,6 +4,7 @@ import com.kai.matchengine.event.inbound.CancelOrder;
 import com.kai.matchengine.event.inbound.MatchEvent;
 import com.kai.matchengine.event.inbound.OrderType;
 import com.kai.matchengine.event.inbound.PlaceOrder;
+import com.kai.matchengine.event.inbound.QtyUnit;
 import com.kai.matchengine.event.outbound.BookSnapshot;
 import com.kai.matchengine.event.outbound.BookUpdate;
 import com.kai.matchengine.event.outbound.CommandResult;
@@ -204,8 +205,8 @@ public final class MatchingEngine {
 
     long remaining = cmd.qty();
     long filled = 0L;
-    // 市价买单的 qty 是计价预算；其余下单的 qty 是基础数量。
-    boolean quoteBudget = cmd.orderType() == OrderType.MARKET && cmd.side() == Side.BID;
+    // 只有市价买单、且数量单位为计价预算时，才按预算截断。
+    boolean quoteBudget = isQuoteBudget(cmd);
 
     while (remaining > 0 && crosses(cmd)) {
       if (quoteBudget) {
@@ -228,7 +229,7 @@ public final class MatchingEngine {
         restLimit(cmd, remaining, filled, out);
         resting = true;
       } else {
-        // 市价卖单、市价买单的未花预算、IOC：剩余不入簿。FOK 在成交前已整单取消。
+        // 市价单剩余与 IOC 不入簿。按预算买入时，剩余是未花掉的计价预算。FOK 不会走到这里。
         cancelMarketRemainder(cmd, filled, out);
         remaining = 0L;
       }
@@ -311,6 +312,9 @@ public final class MatchingEngine {
       throw new NullPointerException("side/orderType required");
     }
     if (cmd.qty() <= 0) {
+      return RejectReason.INVALID_QTY;
+    }
+    if (cmd.qtyUnit() == QtyUnit.QUOTE && !isQuoteBudget(cmd)) {
       return RejectReason.INVALID_QTY;
     }
     if (requiresPrice(cmd.orderType()) && cmd.priceTick() <= 0) {
@@ -457,6 +461,13 @@ public final class MatchingEngine {
   private void rememberPlace(PlaceOrder cmd) {
     recentOrderIds.remember(cmd.orderId());
     recordDelta(BookDelta.metaRecentOrder(deltaOffset(), symbolId, cmd.orderId()));
+  }
+
+  /** 市价买单且数量单位为计价预算。校验拒绝发生在进入该分支之前，这里只看已接受的命令。 */
+  private static boolean isQuoteBudget(PlaceOrder cmd) {
+    return cmd.orderType() == OrderType.MARKET
+        && cmd.side() == Side.BID
+        && cmd.qtyUnit() == QtyUnit.QUOTE;
   }
 
   /** LIMIT、IOC 与 FOK 必须带正价格；MARKET 忽略价格。 */

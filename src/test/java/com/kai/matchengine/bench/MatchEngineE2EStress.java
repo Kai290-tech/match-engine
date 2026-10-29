@@ -4,6 +4,7 @@ import com.kai.matchengine.event.inbound.CancelOrder;
 import com.kai.matchengine.event.inbound.MatchEvent;
 import com.kai.matchengine.event.inbound.OrderType;
 import com.kai.matchengine.event.inbound.PlaceOrder;
+import com.kai.matchengine.event.inbound.QtyUnit;
 import com.kai.matchengine.event.outbound.BookUpdate;
 import com.kai.matchengine.event.outbound.CommandResult;
 import com.kai.matchengine.event.outbound.OrderUpdate;
@@ -300,7 +301,7 @@ public final class MatchEngineE2EStress {
       long id = nextOrderId++;
       if (rnd.nextBoolean()) {
         long budget = engine.book().hasBestAsk() ? baseQty * engine.book().bestAsk() : baseQty;
-        return new PlaceOrder(1, id, id, 2, Side.BID, OrderType.MARKET, 0, budget);
+        return new PlaceOrder(1, id, id, 2, Side.BID, OrderType.MARKET, 0, budget, QtyUnit.QUOTE);
       }
       return new PlaceOrder(1, id, id, 2, Side.ASK, OrderType.MARKET, 0, baseQty);
     }

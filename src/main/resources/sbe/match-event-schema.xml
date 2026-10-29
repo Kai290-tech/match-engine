@@ -2,7 +2,7 @@
 <sbe:messageSchema xmlns:sbe="http://fix.simple-binary-encoding.org/sbe/4.0"
                    package="com.kai.matchengine.sbe"
                    id="101"
-                   version="2"
+                   version="3"
                    semanticVersion="1.5.0"
                    description="Match engine Kafka ingress"
                    byteOrder="littleEndian">
@@ -23,6 +23,10 @@
             <validValue name="IOC">2</validValue>
             <validValue name="FOK">3</validValue>
         </enum>
+        <enum name="QtyUnit" encodingType="uint8">
+            <validValue name="BASE">0</validValue>
+            <validValue name="QUOTE">1</validValue>
+        </enum>
         <type name="SymbolCode" primitiveType="char" length="16" characterEncoding="UTF-8"/>
     </types>
 
@@ -34,7 +38,8 @@
         <field name="side" id="5" type="Side"/>
         <field name="orderType" id="6" type="OrderType"/>
         <field name="priceTick" id="7" type="int64"/>
-        <field name="qty" id="8" type="int64" description="Base quantity. MARKET BID uses this as the quote budget."/>
+        <field name="qty" id="8" type="int64" description="Base quantity, or quote budget when qtyUnit is QUOTE."/>
+        <field name="qtyUnit" id="9" type="QtyUnit" sinceVersion="3" description="QUOTE is valid only for MARKET BID."/>
     </sbe:message>
 
     <sbe:message name="CancelOrder" id="2" description="Cancel order command">

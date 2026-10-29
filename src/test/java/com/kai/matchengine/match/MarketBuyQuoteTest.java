@@ -7,6 +7,7 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 
 import com.kai.matchengine.event.inbound.OrderType;
 import com.kai.matchengine.event.inbound.PlaceOrder;
+import com.kai.matchengine.event.inbound.QtyUnit;
 import com.kai.matchengine.event.outbound.CommandResult;
 import com.kai.matchengine.event.outbound.OrderUpdate;
 import com.kai.matchengine.event.outbound.OrderUpdateType;
@@ -27,7 +28,7 @@ class MarketBuyQuoteTest {
     engine.apply(new PlaceOrder(1, 2, 2, 1, Side.ASK, OrderType.LIMIT, 150, 2));
 
     List<OutboundEvent> out =
-        engine.apply(new PlaceOrder(1, 3, 30, 2, Side.BID, OrderType.MARKET, 0, 450));
+        engine.apply(new PlaceOrder(1, 3, 30, 2, Side.BID, OrderType.MARKET, 0, 450, QtyUnit.QUOTE));
 
     List<Trade> trades = trades(out);
     assertEquals(2, trades.size());
@@ -61,7 +62,7 @@ class MarketBuyQuoteTest {
     engine.apply(new PlaceOrder(1, 2, 2, 1, Side.ASK, OrderType.LIMIT, 100, 2));
 
     List<OutboundEvent> out =
-        engine.apply(new PlaceOrder(1, 3, 30, 2, Side.BID, OrderType.MARKET, 0, 200));
+        engine.apply(new PlaceOrder(1, 3, 30, 2, Side.BID, OrderType.MARKET, 0, 200, QtyUnit.QUOTE));
 
     List<Trade> trades = trades(out);
     assertEquals(2, trades.size());
@@ -82,7 +83,7 @@ class MarketBuyQuoteTest {
     engine.apply(new PlaceOrder(1, 1, 1, 1, Side.ASK, OrderType.LIMIT, 3, 4_000));
 
     List<OutboundEvent> out =
-        engine.apply(new PlaceOrder(1, 2, 20, 2, Side.BID, OrderType.MARKET, 0, 10_000));
+        engine.apply(new PlaceOrder(1, 2, 20, 2, Side.BID, OrderType.MARKET, 0, 10_000, QtyUnit.QUOTE));
 
     List<Trade> trades = trades(out);
     assertEquals(1, trades.size());
@@ -103,7 +104,7 @@ class MarketBuyQuoteTest {
     assertFalse(engine.book().hasCapacityForNewOrder());
 
     List<OutboundEvent> out =
-        engine.apply(new PlaceOrder(1, 2, 9, 2, Side.BID, OrderType.MARKET, 0, 250));
+        engine.apply(new PlaceOrder(1, 2, 9, 2, Side.BID, OrderType.MARKET, 0, 250, QtyUnit.QUOTE));
 
     assertTrue(
         out.stream()
@@ -121,7 +122,7 @@ class MarketBuyQuoteTest {
     engine.apply(new PlaceOrder(1, 1, 1, 1, Side.ASK, OrderType.LIMIT, 100, 2));
 
     List<OutboundEvent> out =
-        engine.apply(new PlaceOrder(1, 2, 8, 2, Side.BID, OrderType.MARKET, 0, 99));
+        engine.apply(new PlaceOrder(1, 2, 8, 2, Side.BID, OrderType.MARKET, 0, 99, QtyUnit.QUOTE));
 
     assertTrue(out.stream().noneMatch(Trade.class::isInstance));
     CommandResult.Place place = placeResult(out);
@@ -133,9 +134,51 @@ class MarketBuyQuoteTest {
     assertEquals(2L, engine.book().get(1).qty());
 
     CommandResult.Place duplicate =
-        placeResult(engine.apply(new PlaceOrder(1, 3, 8, 2, Side.BID, OrderType.MARKET, 0, 10_000)));
+        placeResult(
+            engine.apply(
+                new PlaceOrder(1, 3, 8, 2, Side.BID, OrderType.MARKET, 0, 10_000, QtyUnit.QUOTE)));
     assertEquals(RejectReason.DUPLICATE_ORDER_ID, duplicate.rejectReason());
     assertEquals(2L, engine.book().get(1).qty());
+  }
+
+  @Test
+  void f25_marketBuyByBaseQtyWalksTheBook() {
+    MatchingEngine engine = new MatchingEngine("S-1", () -> 1L);
+    engine.apply(new PlaceOrder(1, 1, 1, 1, Side.ASK, OrderType.LIMIT, 100, 2));
+
+    List<OutboundEvent> out =
+        engine.apply(new PlaceOrder(1, 2, 4, 2, Side.BID, OrderType.MARKET, 0, 5));
+
+    List<Trade> trades = trades(out);
+    assertEquals(1, trades.size());
+    assertEquals(100L, trades.get(0).priceTick());
+    assertEquals(2L, trades.get(0).qty());
+    CommandResult.Place place = placeResult(out);
+    assertEquals(2L, place.filledQty());
+    assertEquals(OrderUpdateType.CANCELLED_REMAINDER, takerUpdate(out, 4L).type());
+    assertTrue(engine.book().isEmpty());
+  }
+
+  @Test
+  void f26_quoteUnitRejectedExceptMarketBid() {
+    MatchingEngine engine = new MatchingEngine("S-1", () -> 1L);
+    engine.apply(new PlaceOrder(1, 1, 1, 1, Side.BID, OrderType.LIMIT, 100, 2));
+
+    CommandResult.Place sell =
+        placeResult(
+            engine.apply(new PlaceOrder(1, 2, 8, 2, Side.ASK, OrderType.MARKET, 0, 100, QtyUnit.QUOTE)));
+    assertEquals(RejectReason.INVALID_QTY, sell.rejectReason());
+    assertEquals(2L, engine.book().get(1).qty());
+
+    CommandResult.Place limit =
+        placeResult(
+            engine.apply(new PlaceOrder(1, 3, 8, 2, Side.BID, OrderType.LIMIT, 100, 1, QtyUnit.QUOTE)));
+    assertEquals(RejectReason.INVALID_QTY, limit.rejectReason());
+
+    CommandResult.Place accepted =
+        placeResult(engine.apply(new PlaceOrder(1, 4, 8, 2, Side.BID, OrderType.LIMIT, 100, 1)));
+    assertTrue(accepted.accepted());
+    assertEquals(2, engine.book().orderCount());
   }
 
   @Test

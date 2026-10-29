@@ -6,6 +6,7 @@ import com.kai.matchengine.event.inbound.HaltSymbol;
 import com.kai.matchengine.event.inbound.MatchEvent;
 import com.kai.matchengine.event.inbound.OrderType;
 import com.kai.matchengine.event.inbound.PlaceOrder;
+import com.kai.matchengine.event.inbound.QtyUnit;
 import com.kai.matchengine.event.inbound.ResumeSymbol;
 import com.kai.matchengine.event.inbound.UpdateSymbol;
 import com.kai.matchengine.orderbook.Side;
@@ -113,7 +114,8 @@ public final class SbeMatchEventCodec {
         side,
         orderType,
         d.priceTick(),
-        d.qty());
+        d.qty(),
+        mapQtyUnit(d.qtyUnit()));
   }
 
   private static CancelOrder toCancel(CancelOrderDecoder d) {
@@ -169,6 +171,17 @@ public final class SbeMatchEventCodec {
       case IOC -> OrderType.IOC;
       case FOK -> OrderType.FOK;
       default -> throw new IngressException(IngressRejectReason.INVALID_ENUM, "orderType=" + type);
+    };
+  }
+
+  private static QtyUnit mapQtyUnit(com.kai.matchengine.sbe.QtyUnit unit) throws IngressException {
+    if (unit == null || unit == com.kai.matchengine.sbe.QtyUnit.NULL_VAL) {
+      return QtyUnit.BASE;
+    }
+    return switch (unit) {
+      case BASE -> QtyUnit.BASE;
+      case QUOTE -> QtyUnit.QUOTE;
+      default -> throw new IngressException(IngressRejectReason.INVALID_ENUM, "qtyUnit=" + unit);
     };
   }
 }

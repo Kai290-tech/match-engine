@@ -9,6 +9,7 @@ import static org.junit.jupiter.api.Assumptions.assumeTrue;
 import com.kai.matchengine.event.inbound.CreateSymbol;
 import com.kai.matchengine.event.inbound.OrderType;
 import com.kai.matchengine.event.inbound.PlaceOrder;
+import com.kai.matchengine.event.inbound.QtyUnit;
 import com.kai.matchengine.ingress.FatalFailureHandler;
 import com.kai.matchengine.ingress.IngressValidator;
 import com.kai.matchengine.ingress.KafkaIngressRunner;
@@ -162,7 +163,7 @@ class DockerMarketBuyAcceptanceIT {
     await(fatal, () -> book(registry, symbolId).contains(askNear) && book(registry, symbolId).contains(askFar));
 
     long tooSmall = 601;
-    send(encoder.encode(new PlaceOrder(symbolId, req++, tooSmall, 2, Side.BID, OrderType.MARKET, 0, 99)));
+    send(encoder.encode(new PlaceOrder(symbolId, req++, tooSmall, 2, Side.BID, OrderType.MARKET, 0, 99, QtyUnit.QUOTE)));
     await(fatal, () -> place(tooSmall) != null && cancelledRemainder(tooSmall));
     PlaceView killed = place(tooSmall);
     assertTrue(killed.accepted(), killed.toString());
@@ -173,12 +174,12 @@ class DockerMarketBuyAcceptanceIT {
     assertEquals(2L, book(registry, symbolId).get(askNear).qty());
     assertEquals(2L, book(registry, symbolId).get(askFar).qty());
 
-    send(encoder.encode(new PlaceOrder(symbolId, req++, tooSmall, 2, Side.BID, OrderType.MARKET, 0, 450)));
+    send(encoder.encode(new PlaceOrder(symbolId, req++, tooSmall, 2, Side.BID, OrderType.MARKET, 0, 450, QtyUnit.QUOTE)));
     await(fatal, () -> rejectedDuplicate(tooSmall));
     assertEquals(2L, book(registry, symbolId).get(askNear).qty());
 
     long budgetBuy = 701;
-    send(encoder.encode(new PlaceOrder(symbolId, req++, budgetBuy, 2, Side.BID, OrderType.MARKET, 0, 450)));
+    send(encoder.encode(new PlaceOrder(symbolId, req++, budgetBuy, 2, Side.BID, OrderType.MARKET, 0, 450, QtyUnit.QUOTE)));
     await(
         fatal,
         () ->
@@ -198,7 +199,7 @@ class DockerMarketBuyAcceptanceIT {
     assertFalse(book(registry, symbolId).contains(budgetBuy));
 
     long exact = 801;
-    send(encoder.encode(new PlaceOrder(symbolId, req++, exact, 2, Side.BID, OrderType.MARKET, 0, 150)));
+    send(encoder.encode(new PlaceOrder(symbolId, req++, exact, 2, Side.BID, OrderType.MARKET, 0, 150, QtyUnit.QUOTE)));
     await(fatal, () -> place(exact) != null && tradeMakerQty(exact, askFar, 150, 1) && takerUpdate(exact, "FILLED"));
     PlaceView spent = place(exact);
     assertTrue(spent.accepted(), spent.toString());
@@ -206,6 +207,19 @@ class DockerMarketBuyAcceptanceIT {
     assertEquals(150L, notional(exact));
     assertTrue(book(registry, symbolId).isEmpty());
     assertFalse(cancelledRemainder(exact));
+
+    long askBase = 503;
+    send(encoder.encode(new PlaceOrder(symbolId, req++, askBase, 1, Side.ASK, OrderType.LIMIT, 100, 2)));
+    await(fatal, () -> book(registry, symbolId).contains(askBase));
+    long baseBuy = 901;
+    send(encoder.encode(new PlaceOrder(symbolId, req++, baseBuy, 2, Side.BID, OrderType.MARKET, 0, 5)));
+    await(fatal, () -> place(baseBuy) != null && tradeMakerQty(baseBuy, askBase, 100, 2) && cancelledRemainder(baseBuy));
+    PlaceView byQty = place(baseBuy);
+    assertTrue(byQty.accepted(), byQty.toString());
+    assertEquals(2L, byQty.filledQty());
+    assertEquals(0L, byQty.remainingQty());
+    assertFalse(byQty.resting());
+    assertTrue(book(registry, symbolId).isEmpty());
     assertEquals(null, fatal.get());
   }
 
