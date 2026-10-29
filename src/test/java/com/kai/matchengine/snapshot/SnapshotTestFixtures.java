@@ -95,6 +95,32 @@ public final class SnapshotTestFixtures {
       double fullMaxBookFillRatio,
       int retainCount,
       long persistAwaitTimeoutMs) {
+    return newCoordinator(
+        watermark,
+        fatal,
+        matchTopic,
+        matchPartition,
+        batchStore,
+        deltaTriggerOffsetSpan,
+        deltaTriggerDeltaCount,
+        fullMaxBookFillRatio,
+        retainCount,
+        persistAwaitTimeoutMs,
+        0L);
+  }
+
+  public static CoordinatorBundle newCoordinator(
+      OutboundWatermark watermark,
+      FatalFailureHandler fatal,
+      String matchTopic,
+      int matchPartition,
+      BookDeltaBatchStore batchStore,
+      long deltaTriggerOffsetSpan,
+      long deltaTriggerDeltaCount,
+      double fullMaxBookFillRatio,
+      int retainCount,
+      long persistAwaitTimeoutMs,
+      long everyNOffsets) {
     BookDeltaLog deltaLog = new BookDeltaLog();
     BookDeltaRecorder recorder = new BookDeltaRecorder(deltaLog);
     EngineRegistry registry =
@@ -119,7 +145,9 @@ public final class SnapshotTestFixtures {
             deltaTriggerDeltaCount,
             fullMaxBookFillRatio,
             retainCount,
-            persistAwaitTimeoutMs);
+            persistAwaitTimeoutMs,
+            everyNOffsets,
+            null);
     return new CoordinatorBundle(
         registry, store, deltaLog, recorder, batchStore, materializer, coordinator);
   }
