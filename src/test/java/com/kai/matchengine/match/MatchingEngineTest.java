@@ -106,7 +106,7 @@ class MatchingEngineTest {
   void market_fillsThenCancelsRemainder() {
     engine.apply(new PlaceOrder(1, 1, 1, 1, Side.ASK, OrderType.LIMIT, 100, 2));
     List<OutboundEvent> out =
-        engine.apply(new PlaceOrder(1, 2, 2, 2, Side.BID, OrderType.MARKET, 0, 5));
+        engine.apply(new PlaceOrder(1, 2, 2, 2, Side.BID, OrderType.MARKET, 0, 250));
     CommandResult.Place place =
         out.stream()
             .filter(CommandResult.Place.class::isInstance)

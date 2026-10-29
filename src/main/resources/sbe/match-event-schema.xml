@@ -3,7 +3,7 @@
                    package="com.kai.matchengine.sbe"
                    id="101"
                    version="2"
-                   semanticVersion="1.4.0"
+                   semanticVersion="1.5.0"
                    description="Match engine Kafka ingress"
                    byteOrder="littleEndian">
     <types>
@@ -34,7 +34,7 @@
         <field name="side" id="5" type="Side"/>
         <field name="orderType" id="6" type="OrderType"/>
         <field name="priceTick" id="7" type="int64"/>
-        <field name="qty" id="8" type="int64"/>
+        <field name="qty" id="8" type="int64" description="Base quantity. MARKET BID uses this as the quote budget."/>
     </sbe:message>
 
     <sbe:message name="CancelOrder" id="2" description="Cancel order command">

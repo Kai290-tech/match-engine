@@ -269,12 +269,7 @@ public final class MatchEngineE2EStress {
       if (bidLv < minLevels || askLv < minLevels) {
         return replenishMaker();
       }
-      long id = nextOrderId++;
-      int qty = 1 + rnd.nextInt(takeQtyMax);
-      if (rnd.nextBoolean()) {
-        return new PlaceOrder(1, id, id, 2, Side.BID, OrderType.MARKET, 0, qty);
-      }
-      return new PlaceOrder(1, id, id, 2, Side.ASK, OrderType.MARKET, 0, qty);
+      return marketTake(1 + rnd.nextInt(takeQtyMax));
     }
 
     private MatchEvent replenishMaker() {
@@ -297,11 +292,17 @@ public final class MatchEngineE2EStress {
     }
 
     private MatchEvent aggressiveTake() {
+      return marketTake(1 + rnd.nextInt(5));
+    }
+
+    /** 市价买单的 qty 是计价预算，按当前最优卖价换算，才能在整数档上吃到约 baseQty。 */
+    private MatchEvent marketTake(int baseQty) {
       long id = nextOrderId++;
       if (rnd.nextBoolean()) {
-        return new PlaceOrder(1, id, id, 2, Side.BID, OrderType.MARKET, 0, 1 + rnd.nextInt(5));
+        long budget = engine.book().hasBestAsk() ? baseQty * engine.book().bestAsk() : baseQty;
+        return new PlaceOrder(1, id, id, 2, Side.BID, OrderType.MARKET, 0, budget);
       }
-      return new PlaceOrder(1, id, id, 2, Side.ASK, OrderType.MARKET, 0, 1 + rnd.nextInt(5));
+      return new PlaceOrder(1, id, id, 2, Side.ASK, OrderType.MARKET, 0, baseQty);
     }
 
     private MatchEvent cancelOrReplenish() {

@@ -204,10 +204,22 @@ public final class MatchingEngine {
 
     long remaining = cmd.qty();
     long filled = 0L;
+    // 市价买单的 qty 是计价预算；其余下单的 qty 是基础数量。
+    boolean quoteBudget = cmd.orderType() == OrderType.MARKET && cmd.side() == Side.BID;
 
     while (remaining > 0 && crosses(cmd)) {
-      filled += matchOne(cmd, remaining, out);
-      remaining = cmd.qty() - filled;
+      if (quoteBudget) {
+        long makerPrice = oppositeHead(cmd.side()).priceTick();
+        if (makerPrice <= 0L || remaining < makerPrice) {
+          break;
+        }
+        long fillQty = matchOne(cmd, remaining / makerPrice, out);
+        filled += fillQty;
+        remaining -= makerPrice * fillQty;
+      } else {
+        filled += matchOne(cmd, remaining, out);
+        remaining = cmd.qty() - filled;
+      }
     }
 
     boolean resting = false;
@@ -216,7 +228,7 @@ public final class MatchingEngine {
         restLimit(cmd, remaining, filled, out);
         resting = true;
       } else {
-        // MARKET 与 IOC：剩余不入簿。FOK 在成交前已整单取消，不会走到这里。
+        // 市价卖单、市价买单的未花预算、IOC：剩余不入簿。FOK 在成交前已整单取消。
         cancelMarketRemainder(cmd, filled, out);
         remaining = 0L;
       }
