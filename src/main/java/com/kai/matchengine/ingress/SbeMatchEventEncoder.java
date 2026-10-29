@@ -113,8 +113,10 @@ public final class SbeMatchEventEncoder {
   }
 
   private static com.kai.matchengine.sbe.OrderType mapOrderType(OrderType type) {
-    return type == OrderType.LIMIT
-        ? com.kai.matchengine.sbe.OrderType.LIMIT
-        : com.kai.matchengine.sbe.OrderType.MARKET;
+    return switch (type) {
+      case LIMIT -> com.kai.matchengine.sbe.OrderType.LIMIT;
+      case MARKET -> com.kai.matchengine.sbe.OrderType.MARKET;
+      case IOC -> com.kai.matchengine.sbe.OrderType.IOC;
+    };
   }
 }

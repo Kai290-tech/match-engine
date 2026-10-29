@@ -3,7 +3,7 @@
                    package="com.kai.matchengine.sbe"
                    id="101"
                    version="2"
-                   semanticVersion="1.2.0"
+                   semanticVersion="1.3.0"
                    description="Match engine Kafka ingress"
                    byteOrder="littleEndian">
     <types>
@@ -20,6 +20,7 @@
         <enum name="OrderType" encodingType="uint8">
             <validValue name="LIMIT">0</validValue>
             <validValue name="MARKET">1</validValue>
+            <validValue name="IOC">2</validValue>
         </enum>
         <type name="SymbolCode" primitiveType="char" length="16" characterEncoding="UTF-8"/>
     </types>
