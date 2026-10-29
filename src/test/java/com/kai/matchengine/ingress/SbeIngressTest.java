@@ -377,6 +377,22 @@ class SbeIngressTest {
   }
 
   @Test
+  void encodeDecode_postOnly_roundTrip() throws Exception {
+    PlaceOrder original = new PlaceOrder(1, 13L, 130L, 4L, Side.ASK, OrderType.POST_ONLY, 80L, 6L);
+    PlaceOrder decoded = assertInstanceOf(PlaceOrder.class, codec.decode(encoder.encode(original)));
+    assertEquals(OrderType.POST_ONLY, decoded.orderType());
+    assertEquals(80L, decoded.priceTick());
+    assertEquals(QtyUnit.BASE, decoded.qtyUnit());
+    validator.validate(decoded);
+    assertEquals(
+        IngressRejectReason.INVALID_PRICE,
+        assertThrows(
+                IngressException.class,
+                () -> validator.validate(new PlaceOrder(1, 1, 1, 1, Side.BID, OrderType.POST_ONLY, 0, 1)))
+            .reason());
+  }
+
+  @Test
   void encodeDecode_fok_roundTrip() throws Exception {
     PlaceOrder original = new PlaceOrder(1, 9L, 90L, 4L, Side.BID, OrderType.FOK, 80L, 6L);
     PlaceOrder decoded = assertInstanceOf(PlaceOrder.class, codec.decode(encoder.encode(original)));

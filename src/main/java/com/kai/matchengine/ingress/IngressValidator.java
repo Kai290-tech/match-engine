@@ -46,7 +46,7 @@ public final class IngressValidator {
     }
     if (requiresPrice(p.orderType()) && p.priceTick() <= 0) {
       throw new IngressException(
-          IngressRejectReason.INVALID_PRICE, "limit/ioc/fok priceTick must be > 0");
+          IngressRejectReason.INVALID_PRICE, "limit/ioc/fok/post-only priceTick must be > 0");
     }
   }
 
@@ -86,7 +86,10 @@ public final class IngressValidator {
   }
 
   private static boolean requiresPrice(OrderType orderType) {
-    return orderType == OrderType.LIMIT || orderType == OrderType.IOC || orderType == OrderType.FOK;
+    return orderType == OrderType.LIMIT
+        || orderType == OrderType.IOC
+        || orderType == OrderType.FOK
+        || orderType == OrderType.POST_ONLY;
   }
 
   private void requirePositiveSymbolId(int symbolId) throws IngressException {

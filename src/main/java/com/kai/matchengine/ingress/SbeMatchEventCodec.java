@@ -170,6 +170,7 @@ public final class SbeMatchEventCodec {
       case MARKET -> OrderType.MARKET;
       case IOC -> OrderType.IOC;
       case FOK -> OrderType.FOK;
+      case POST_ONLY -> OrderType.POST_ONLY;
       default -> throw new IngressException(IngressRejectReason.INVALID_ENUM, "orderType=" + type);
     };
   }

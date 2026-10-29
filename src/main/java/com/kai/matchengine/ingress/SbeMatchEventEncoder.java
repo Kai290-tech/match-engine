@@ -120,6 +120,7 @@ public final class SbeMatchEventEncoder {
       case MARKET -> com.kai.matchengine.sbe.OrderType.MARKET;
       case IOC -> com.kai.matchengine.sbe.OrderType.IOC;
       case FOK -> com.kai.matchengine.sbe.OrderType.FOK;
+      case POST_ONLY -> com.kai.matchengine.sbe.OrderType.POST_ONLY;
     };
   }
 
