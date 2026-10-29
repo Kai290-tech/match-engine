@@ -1,0 +1,9 @@
+# Keep Spring context tests offline (no Kafka/MySQL required).
+match-engine:
+  pipeline-enabled: false
+
+outbound:
+  enabled: false
+
+snapshot:
+  store: memory

@@ -1,0 +1,66 @@
+<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+<sbe:messageSchema xmlns:sbe="http://fix.simple-binary-encoding.org/sbe/4.0"
+                   package="com.kai.matchengine.sbe"
+                   id="101"
+                   version="2"
+                   semanticVersion="1.2.0"
+                   description="Match engine Kafka ingress"
+                   byteOrder="littleEndian">
+    <types>
+        <composite name="messageHeader" description="Message identifiers and length of message root">
+            <type name="blockLength" primitiveType="uint16"/>
+            <type name="templateId" primitiveType="uint16"/>
+            <type name="schemaId" primitiveType="uint16"/>
+            <type name="version" primitiveType="uint16"/>
+        </composite>
+        <enum name="Side" encodingType="uint8">
+            <validValue name="BID">0</validValue>
+            <validValue name="ASK">1</validValue>
+        </enum>
+        <enum name="OrderType" encodingType="uint8">
+            <validValue name="LIMIT">0</validValue>
+            <validValue name="MARKET">1</validValue>
+        </enum>
+        <type name="SymbolCode" primitiveType="char" length="16" characterEncoding="UTF-8"/>
+    </types>
+
+    <sbe:message name="PlaceOrder" id="1" description="Place order command">
+        <field name="symbolId" id="1" type="int32"/>
+        <field name="clientRequestId" id="2" type="int64"/>
+        <field name="orderId" id="3" type="int64"/>
+        <field name="userId" id="4" type="int64"/>
+        <field name="side" id="5" type="Side"/>
+        <field name="orderType" id="6" type="OrderType"/>
+        <field name="priceTick" id="7" type="int64"/>
+        <field name="qty" id="8" type="int64"/>
+    </sbe:message>
+
+    <sbe:message name="CancelOrder" id="2" description="Cancel order command">
+        <field name="symbolId" id="1" type="int32"/>
+        <field name="clientRequestId" id="2" type="int64"/>
+        <field name="orderId" id="3" type="int64"/>
+        <field name="userId" id="4" type="int64"/>
+    </sbe:message>
+
+    <sbe:message name="CreateSymbol" id="3" description="Register a tradable symbol">
+        <field name="symbolId" id="1" type="int32"/>
+        <field name="clientRequestId" id="2" type="int64"/>
+        <field name="code" id="3" type="SymbolCode"/>
+    </sbe:message>
+
+    <sbe:message name="HaltSymbol" id="4" description="Halt trading; cancel still allowed">
+        <field name="symbolId" id="1" type="int32"/>
+        <field name="clientRequestId" id="2" type="int64"/>
+    </sbe:message>
+
+    <sbe:message name="ResumeSymbol" id="5" description="Resume trading after halt">
+        <field name="symbolId" id="1" type="int32"/>
+        <field name="clientRequestId" id="2" type="int64"/>
+    </sbe:message>
+
+    <sbe:message name="UpdateSymbol" id="6" description="Update symbol code (book must be empty)">
+        <field name="symbolId" id="1" type="int32"/>
+        <field name="clientRequestId" id="2" type="int64"/>
+        <field name="code" id="3" type="SymbolCode"/>
+    </sbe:message>
+</sbe:messageSchema>

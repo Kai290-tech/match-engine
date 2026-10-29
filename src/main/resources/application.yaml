@@ -1,0 +1,52 @@
+spring:
+  application:
+    name: match-engine
+  datasource:
+    url: ${MYSQL_URL:jdbc:mysql://localhost:3306/match_engine?useSSL=false&allowPublicKeyRetrieval=true&serverTimezone=UTC}
+    username: ${MYSQL_USER:root}
+    password: ${MYSQL_PASSWORD:root}
+    driver-class-name: com.mysql.cj.jdbc.Driver
+
+# 完整管道默认关闭，避免本地无 Kafka/MySQL 时强连；联调时打开
+match-engine:
+  pipeline-enabled: true
+
+ingress:
+  kafka:
+    bootstrap-servers: ${KAFKA_BOOTSTRAP:localhost:9092}
+    topic: match_event
+    partition: 0
+    # group-id 已忽略：进程每次启动由管道生成新 UUID，避免继承旧 group commit
+    group-id: ignored
+    start-offset: 0
+  # 已废弃：symbol 仅由快照 + CreateSymbol 建立；保留字段仅为兼容旧配置
+  symbols:
+
+outbound:
+  enabled: true
+  kafka:
+    bootstrap-servers: ${KAFKA_BOOTSTRAP:localhost:9092}
+    topics:
+      event-result: event_result
+      trade: trade
+      order-update: order_update
+      book-update: book_update
+  queue-capacity: 65536
+  send-timeout-ms: 30000
+
+snapshot:
+  store: jdbc
+  every-n-offsets: 18
+  interval-ms: 600000
+  retain-count: 2
+  persist-await-timeout-ms: 120000
+
+# 调试期：管道关键路径 INFO；细粒度 DEBUG
+logging:
+  level:
+    root: INFO
+    com.kai.matchengine: INFO
+    com.kai.matchengine.ingress: DEBUG
+    com.kai.matchengine.match: DEBUG
+    com.kai.matchengine.outbound: DEBUG
+    com.kai.matchengine.snapshot: DEBUG
