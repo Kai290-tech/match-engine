@@ -8,6 +8,7 @@ import com.kai.matchengine.event.inbound.PlaceOrder;
 import com.kai.matchengine.match.EngineRegistry;
 import com.kai.matchengine.orderbook.Side;
 import com.kai.matchengine.outbound.OutboundWatermark;
+import com.kai.matchengine.snapshot.delta.InMemoryBookDeltaBatchStore;
 import com.kai.matchengine.snapshot.delta.MatchDeltaContext;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicReference;
@@ -103,6 +104,63 @@ class SnapshotCoordinatorTest {
             .orElseThrow());
     assertEquals(1, restored.get(1).book().orderCount());
     assertEquals(100, restored.get(1).book().bestBid());
+  }
+
+  @Test
+  void everyNOffsets_persistsFullSnapshotWithoutExplicitRequest() throws Exception {
+    OutboundWatermark watermark = new OutboundWatermark();
+    AtomicReference<Throwable> fatal = new AtomicReference<>();
+    SnapshotTestFixtures.CoordinatorBundle bundle =
+        SnapshotTestFixtures.newCoordinator(
+            watermark,
+            (m, c) -> fatal.set(c),
+            "match_event",
+            0,
+            new InMemoryBookDeltaBatchStore(),
+            10_000,
+            10_000,
+            0.30,
+            2,
+            5_000,
+            2L);
+    coordinator = bundle.coordinator();
+    bundle.registry().register(1);
+
+    coordinator.bootstrapFromStore();
+    coordinator.start();
+
+    coordinator.onMatched(0L, 1_000L);
+    Thread.sleep(80);
+    assertEquals(0, bundle.snapshotStore().size());
+
+    coordinator.onMatched(1L, 1_001L);
+    watermark.advanceTo(0L);
+    watermark.advanceTo(1L);
+    long deadline = System.nanoTime() + TimeUnit.SECONDS.toNanos(2);
+    while (bundle.snapshotStore().size() < 1 && System.nanoTime() < deadline) {
+      Thread.sleep(10);
+    }
+    assertEquals(1, bundle.snapshotStore().size());
+    assertEquals(
+        1L,
+        bundle.snapshotStore().loadLatest("match_event", 0).orElseThrow().lastFullyProcessedOffset());
+
+    coordinator.onMatched(2L, 1_002L);
+    Thread.sleep(80);
+    assertEquals(1, bundle.snapshotStore().size());
+
+    coordinator.onMatched(3L, 1_003L);
+    watermark.advanceTo(2L);
+    watermark.advanceTo(3L);
+    deadline = System.nanoTime() + TimeUnit.SECONDS.toNanos(2);
+    while (bundle.snapshotStore().loadLatest("match_event", 0).orElseThrow().lastFullyProcessedOffset() < 3L
+        && System.nanoTime() < deadline) {
+      Thread.sleep(10);
+    }
+    assertEquals(
+        3L,
+        bundle.snapshotStore().loadLatest("match_event", 0).orElseThrow().lastFullyProcessedOffset());
+    assertEquals(null, fatal.get());
   }
 
   @Test

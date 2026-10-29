@@ -27,7 +27,7 @@ import org.slf4j.LoggerFactory;
 /**
  * 快照协调：snapshot 线程 drain {@link BookDeltaLog} → 镜像；事件触发增量 batch / 全量 compaction。
  *
- * <p>撮合线程 {@link #onMatched} 仅更新 offset 计数，不扫簿。
+ * <p>撮合线程 {@link #onMatched} 只更新 offset 计数，并在跨过 {@code everyNOffsets} 时请求全量。
  */
 public final class SnapshotCoordinator implements AutoCloseable {
 
@@ -51,6 +51,7 @@ public final class SnapshotCoordinator implements AutoCloseable {
   private final int matchPartition;
   private final long deltaTriggerOffsetSpan;
   private final long deltaTriggerDeltaCount;
+  private final long everyNOffsets;
   private final double fullMaxBookFillRatio;
   private final int retainCount;
   private final long persistAwaitTimeoutMs;
@@ -63,6 +64,8 @@ public final class SnapshotCoordinator implements AutoCloseable {
 
   private volatile long baseSnapshotId = 0L;
   private volatile long lastBatchToOffset = -1L;
+  private final AtomicLong lastFullSnapshotOffset = new AtomicLong(-1L);
+  private final AtomicLong fullRequestedAt = new AtomicLong(-1L);
 
   private final BlockingQueue<EngineSnapshot> pendingFull = new ArrayBlockingQueue<>(1);
   private final List<BookDelta> pendingBatchDeltas = new ArrayList<>();
@@ -100,6 +103,7 @@ public final class SnapshotCoordinator implements AutoCloseable {
         fullMaxBookFillRatio,
         retainCount,
         persistAwaitTimeoutMs,
+        0L,
         null);
   }
 
@@ -119,6 +123,42 @@ public final class SnapshotCoordinator implements AutoCloseable {
       int retainCount,
       long persistAwaitTimeoutMs,
       JdbcSnapshotCompactionWriter jdbcCompactionWriter) {
+    this(
+        registry,
+        store,
+        batchStore,
+        deltaLog,
+        materializer,
+        watermark,
+        fatalFailureHandler,
+        matchTopic,
+        matchPartition,
+        deltaTriggerOffsetSpan,
+        deltaTriggerDeltaCount,
+        fullMaxBookFillRatio,
+        retainCount,
+        persistAwaitTimeoutMs,
+        0L,
+        jdbcCompactionWriter);
+  }
+
+  public SnapshotCoordinator(
+      EngineRegistry registry,
+      SnapshotStore store,
+      BookDeltaBatchStore batchStore,
+      BookDeltaLog deltaLog,
+      SnapshotMaterializer materializer,
+      OutboundWatermark watermark,
+      FatalFailureHandler fatalFailureHandler,
+      String matchTopic,
+      int matchPartition,
+      long deltaTriggerOffsetSpan,
+      long deltaTriggerDeltaCount,
+      double fullMaxBookFillRatio,
+      int retainCount,
+      long persistAwaitTimeoutMs,
+      long everyNOffsets,
+      JdbcSnapshotCompactionWriter jdbcCompactionWriter) {
     this.registry = Objects.requireNonNull(registry, "registry");
     this.store = Objects.requireNonNull(store, "store");
     this.batchStore = Objects.requireNonNull(batchStore, "batchStore");
@@ -130,6 +170,7 @@ public final class SnapshotCoordinator implements AutoCloseable {
     this.matchPartition = matchPartition;
     this.deltaTriggerOffsetSpan = deltaTriggerOffsetSpan;
     this.deltaTriggerDeltaCount = deltaTriggerDeltaCount;
+    this.everyNOffsets = everyNOffsets;
     this.fullMaxBookFillRatio = fullMaxBookFillRatio;
     this.retainCount = Math.max(1, retainCount);
     this.persistAwaitTimeoutMs = persistAwaitTimeoutMs;
@@ -179,6 +220,16 @@ public final class SnapshotCoordinator implements AutoCloseable {
     }
     lastSeenMatchOffset.set(matchOffset);
     processedSinceBatch.incrementAndGet();
+    if (everyNOffsets <= 0) {
+      return;
+    }
+    long lastFull = lastFullSnapshotOffset.get();
+    long sinceFull = lastFull < 0 ? matchOffset + 1 : matchOffset - lastFull;
+    long requestedAt = fullRequestedAt.get();
+    if (sinceFull >= everyNOffsets && requestedAt <= lastFull
+        && fullRequestedAt.compareAndSet(requestedAt, matchOffset)) {
+      requestSnapshot();
+    }
   }
 
   /** 请求全量 compaction（需 {@link #bookFillRatioAllowsFull()}）。 */
@@ -436,6 +487,7 @@ public final class SnapshotCoordinator implements AutoCloseable {
       }
       baseSnapshotId = newId;
       lastBatchToOffset = n;
+      lastFullSnapshotOffset.set(n);
       pendingBatchDeltas.clear();
       processedSinceBatch.set(0);
       log.info(
@@ -487,6 +539,8 @@ public final class SnapshotCoordinator implements AutoCloseable {
   private void loadBaseFromStored(SnapshotStore.StoredSnapshot stored) {
     baseSnapshotId = stored.id();
     lastBatchToOffset = stored.lastFullyProcessedOffset();
+    lastFullSnapshotOffset.set(stored.lastFullyProcessedOffset());
+    fullRequestedAt.set(stored.lastFullyProcessedOffset());
     for (SnapshotStore.Section section : stored.sections()) {
       if (!SnapshotCodec.SECTION_MATCH_SYMBOL.equals(section.sectionType())) {
         continue;

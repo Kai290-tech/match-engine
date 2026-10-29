@@ -156,6 +156,7 @@ public class MatchEnginePipelineConfiguration {
         snapProps.getFullMaxBookFillRatio(),
         snapProps.getRetainCount(),
         snapProps.getPersistAwaitTimeoutMs(),
+        snapProps.getEveryNOffsets(),
         compactionWriters.getIfAvailable());
   }
 
