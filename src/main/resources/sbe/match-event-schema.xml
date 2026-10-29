@@ -3,7 +3,7 @@
                    package="com.kai.matchengine.sbe"
                    id="101"
                    version="3"
-                   semanticVersion="1.6.0"
+                   semanticVersion="1.7.0"
                    description="Match engine Kafka ingress"
                    byteOrder="littleEndian">
     <types>

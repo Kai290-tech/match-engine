@@ -194,7 +194,8 @@ public final class MatchingEngine {
       return List.copyOf(out);
     }
 
-    if (cmd.orderType() == OrderType.FOK && !book.canFill(cmd.side(), cmd.priceTick(), cmd.qty())) {
+    if (cmd.orderType() == OrderType.FOK
+        && !book.canFillBeforeSelf(cmd.side(), cmd.userId(), cmd.priceTick(), cmd.qty())) {
       cancelMarketRemainder(cmd, 0L, out);
       rememberPlace(cmd);
       out.add(
@@ -230,10 +231,16 @@ public final class MatchingEngine {
     long filled = 0L;
     // 只有市价买单、且数量单位为计价预算时，才按预算截断。
     boolean quoteBudget = isQuoteBudget(cmd);
+    boolean stoppedForSelf = false;
 
     while (remaining > 0 && crosses(cmd)) {
+      OrderNode maker = oppositeHead(cmd.side());
+      if (maker.userId() == cmd.userId()) {
+        stoppedForSelf = true;
+        break;
+      }
       if (quoteBudget) {
-        long makerPrice = oppositeHead(cmd.side()).priceTick();
+        long makerPrice = maker.priceTick();
         if (makerPrice <= 0L || remaining < makerPrice) {
           break;
         }
@@ -248,11 +255,11 @@ public final class MatchingEngine {
 
     boolean resting = false;
     if (remaining > 0) {
-      if (cmd.orderType() == OrderType.LIMIT) {
+      if (cmd.orderType() == OrderType.LIMIT && !stoppedForSelf) {
         restLimit(cmd, remaining, filled, out);
         resting = true;
       } else {
-        // 市价单剩余与 IOC 不入簿。按预算买入时，剩余是未花掉的计价预算。FOK 不会走到这里。
+        // 市价、IOC，以及碰到自己的挂单后停下的限价：剩余不入簿。FOK 在成交前已整单取消。
         cancelMarketRemainder(cmd, filled, out);
         remaining = 0L;
       }
