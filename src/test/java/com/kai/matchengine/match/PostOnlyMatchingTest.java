@@ -87,6 +87,25 @@ class PostOnlyMatchingTest {
   }
 
   @Test
+  void f28_askTouchingBestBidCancelsEntireOrder() {
+    MatchingEngine engine = new MatchingEngine("S-1", () -> 1L);
+    engine.apply(new PlaceOrder(1, 1, 1, 1, Side.BID, OrderType.LIMIT, 100, 4));
+
+    List<OutboundEvent> out =
+        engine.apply(new PlaceOrder(1, 2, 8, 2, Side.ASK, OrderType.POST_ONLY, 100, 3));
+
+    assertTrue(out.stream().noneMatch(Trade.class::isInstance));
+    CommandResult.Place place = placeResult(out);
+    assertTrue(place.accepted());
+    assertEquals(0L, place.filledQty());
+    assertEquals(0L, place.remainingQty());
+    assertFalse(place.resting());
+    assertEquals(OrderUpdateType.CANCELLED_REMAINDER, takerUpdate(out, 8L).type());
+    assertEquals(4L, engine.book().get(1).qty());
+    assertFalse(engine.book().contains(8));
+  }
+
+  @Test
   void f29_bookFullRejectsRestAndStillCancelsACross() {
     MatchingEngine engine = new MatchingEngine("S-1", () -> 1L, 1);
     engine.apply(new PlaceOrder(1, 1, 1, 1, Side.ASK, OrderType.LIMIT, 100, 2));

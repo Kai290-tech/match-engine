@@ -186,7 +186,12 @@ class DockerPostOnlyAcceptanceIT {
     send(encoder.encode(new CancelOrder(symbolId, req++, ask, 1)));
     await(fatal, () -> !book(registry, symbolId).contains(ask));
     send(encoder.encode(new PlaceOrder(symbolId, req++, wouldRest, 2, Side.BID, OrderType.POST_ONLY, 99, 1)));
-    await(fatal, () -> book(registry, symbolId).contains(wouldRest));
+    await(
+        fatal,
+        () ->
+            book(registry, symbolId).contains(wouldRest)
+                && place(wouldRest) != null
+                && place(wouldRest).accepted());
     PlaceView resting = place(wouldRest);
     assertTrue(resting.accepted(), resting.toString());
     assertEquals(0L, resting.filledQty());
@@ -194,6 +199,20 @@ class DockerPostOnlyAcceptanceIT {
     assertTrue(resting.resting());
     assertFalse(tradeForTaker(wouldRest));
     assertEquals(1L, book(registry, symbolId).get(wouldRest).qty());
+
+    long wouldSell = 801;
+    send(encoder.encode(new PlaceOrder(symbolId, req++, wouldSell, 3, Side.ASK, OrderType.POST_ONLY, 99, 2)));
+    await(fatal, () -> place(wouldSell) != null && cancelledRemainder(wouldSell));
+    PlaceView sold = place(wouldSell);
+    assertTrue(sold.accepted(), sold.toString());
+    assertEquals(0L, sold.filledQty());
+    assertEquals(0L, sold.remainingQty());
+    assertFalse(sold.resting());
+    assertFalse("BOOK_FULL".equals(sold.rejectReason()));
+    assertFalse(tradeForTaker(wouldSell));
+    assertEquals(1L, book(registry, symbolId).get(wouldRest).qty());
+    assertEquals(99L, book(registry, symbolId).get(wouldRest).priceTick());
+    assertFalse(book(registry, symbolId).contains(wouldSell));
     assertEquals(null, fatal.get());
   }
 
