@@ -126,6 +126,33 @@ public final class OrderBook {
     return level == null ? 0L : level.totalQty();
   }
 
+  /**
+   * 对手盘上、价格可交叉的数量是否不少于 {@code qty}。不修改簿。
+   */
+  public boolean canFill(Side takerSide, long limitPrice, long qty) {
+    if (qty <= 0) {
+      return false;
+    }
+    long need = qty;
+    NavigableMap<Long, PriceLevel> opposite = takerSide == Side.BID ? asks : bids;
+    for (PriceLevel level : opposite.values()) {
+      long priceTick = level.priceTick();
+      if (takerSide == Side.BID) {
+        if (priceTick > limitPrice) {
+          break;
+        }
+      } else if (priceTick < limitPrice) {
+        break;
+      }
+      long levelQty = level.totalQty();
+      if (levelQty >= need) {
+        return true;
+      }
+      need -= levelQty;
+    }
+    return false;
+  }
+
   /** 买盘深度，最优价在前。 */
   public List<DepthLevel> bidDepth() {
     return copyDepth(bids);
