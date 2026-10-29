@@ -117,6 +117,7 @@ public final class SbeMatchEventEncoder {
       case LIMIT -> com.kai.matchengine.sbe.OrderType.LIMIT;
       case MARKET -> com.kai.matchengine.sbe.OrderType.MARKET;
       case IOC -> com.kai.matchengine.sbe.OrderType.IOC;
+      case FOK -> com.kai.matchengine.sbe.OrderType.FOK;
     };
   }
 }

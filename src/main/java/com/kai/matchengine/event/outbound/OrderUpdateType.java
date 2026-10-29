@@ -10,6 +10,6 @@ public enum OrderUpdateType {
   FILLED,
   /** 主动撤单。 */
   CANCELLED,
-  /** 市价或 IOC 未入簿的剩余被取消。 */
+  /** 市价、IOC 或 FOK 未入簿的数量被取消。 */
   CANCELLED_REMAINDER
 }

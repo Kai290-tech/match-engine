@@ -193,6 +193,15 @@ public final class MatchingEngine {
       return List.copyOf(out);
     }
 
+    if (cmd.orderType() == OrderType.FOK && !book.canFill(cmd.side(), cmd.priceTick(), cmd.qty())) {
+      cancelMarketRemainder(cmd, 0L, out);
+      rememberPlace(cmd);
+      out.add(
+          CommandResult.Place.ok(
+              cmd.clientRequestId(), now(), symbol, cmd.orderId(), 0L, 0L, false));
+      return List.copyOf(out);
+    }
+
     long remaining = cmd.qty();
     long filled = 0L;
 
@@ -207,7 +216,7 @@ public final class MatchingEngine {
         restLimit(cmd, remaining, filled, out);
         resting = true;
       } else {
-        // MARKET 与 IOC：剩余不入簿。
+        // MARKET 与 IOC：剩余不入簿。FOK 在成交前已整单取消，不会走到这里。
         cancelMarketRemainder(cmd, filled, out);
         remaining = 0L;
       }
@@ -215,8 +224,7 @@ public final class MatchingEngine {
       emitTakerFilled(cmd, filled, out);
     }
 
-    recentOrderIds.remember(cmd.orderId());
-    recordDelta(BookDelta.metaRecentOrder(deltaOffset(), symbolId, cmd.orderId()));
+    rememberPlace(cmd);
 
     out.add(
         CommandResult.Place.ok(
@@ -434,9 +442,14 @@ public final class MatchingEngine {
     out.add(new BookUpdate(bookVersion, eventTime, book.symbol(), side, priceTick, levelQty));
   }
 
-  /** LIMIT 与 IOC 必须带正价格；MARKET 忽略价格。 */
+  private void rememberPlace(PlaceOrder cmd) {
+    recentOrderIds.remember(cmd.orderId());
+    recordDelta(BookDelta.metaRecentOrder(deltaOffset(), symbolId, cmd.orderId()));
+  }
+
+  /** LIMIT、IOC 与 FOK 必须带正价格；MARKET 忽略价格。 */
   private static boolean requiresPrice(OrderType orderType) {
-    return orderType == OrderType.LIMIT || orderType == OrderType.IOC;
+    return orderType == OrderType.LIMIT || orderType == OrderType.IOC || orderType == OrderType.FOK;
   }
 
   private boolean crosses(PlaceOrder cmd) {
