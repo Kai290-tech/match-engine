@@ -6,6 +6,7 @@ import com.kai.matchengine.event.inbound.HaltSymbol;
 import com.kai.matchengine.event.inbound.MatchEvent;
 import com.kai.matchengine.event.inbound.OrderType;
 import com.kai.matchengine.event.inbound.PlaceOrder;
+import com.kai.matchengine.event.inbound.QtyUnit;
 import com.kai.matchengine.event.inbound.ResumeSymbol;
 import com.kai.matchengine.event.inbound.UpdateSymbol;
 import com.kai.matchengine.orderbook.Side;
@@ -53,6 +54,7 @@ public final class SbeMatchEventEncoder {
     body.orderType(mapOrderType(p.orderType()));
     body.priceTick(p.priceTick());
     body.qty(p.qty());
+    body.qtyUnit(mapQtyUnit(p.qtyUnit()));
     return bytes;
   }
 
@@ -118,6 +120,13 @@ public final class SbeMatchEventEncoder {
       case MARKET -> com.kai.matchengine.sbe.OrderType.MARKET;
       case IOC -> com.kai.matchengine.sbe.OrderType.IOC;
       case FOK -> com.kai.matchengine.sbe.OrderType.FOK;
+    };
+  }
+
+  private static com.kai.matchengine.sbe.QtyUnit mapQtyUnit(QtyUnit unit) {
+    return switch (unit) {
+      case BASE -> com.kai.matchengine.sbe.QtyUnit.BASE;
+      case QUOTE -> com.kai.matchengine.sbe.QtyUnit.QUOTE;
     };
   }
 }

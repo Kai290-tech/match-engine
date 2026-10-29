@@ -6,8 +6,10 @@ import com.kai.matchengine.event.inbound.HaltSymbol;
 import com.kai.matchengine.event.inbound.MatchEvent;
 import com.kai.matchengine.event.inbound.OrderType;
 import com.kai.matchengine.event.inbound.PlaceOrder;
+import com.kai.matchengine.event.inbound.QtyUnit;
 import com.kai.matchengine.event.inbound.ResumeSymbol;
 import com.kai.matchengine.event.inbound.UpdateSymbol;
+import com.kai.matchengine.orderbook.Side;
 import java.util.Objects;
 
 /**
@@ -37,6 +39,10 @@ public final class IngressValidator {
     }
     if (p.qty() <= 0) {
       throw new IngressException(IngressRejectReason.INVALID_QTY, "qty must be > 0");
+    }
+    if (p.qtyUnit() == QtyUnit.QUOTE && !allowsQuoteBudget(p.orderType(), p.side())) {
+      throw new IngressException(
+          IngressRejectReason.INVALID_QTY, "quote qty is only valid for market bids");
     }
     if (requiresPrice(p.orderType()) && p.priceTick() <= 0) {
       throw new IngressException(
@@ -73,6 +79,10 @@ public final class IngressValidator {
     if (code.trim().length() > 16) {
       throw new IngressException(IngressRejectReason.INVALID_SYMBOL_CODE, "code length > 16");
     }
+  }
+
+  private static boolean allowsQuoteBudget(OrderType orderType, Side side) {
+    return orderType == OrderType.MARKET && side == Side.BID;
   }
 
   private static boolean requiresPrice(OrderType orderType) {

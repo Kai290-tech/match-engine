@@ -9,6 +9,7 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 import com.kai.matchengine.event.inbound.CancelOrder;
 import com.kai.matchengine.event.inbound.OrderType;
 import com.kai.matchengine.event.inbound.PlaceOrder;
+import com.kai.matchengine.event.inbound.QtyUnit;
 import com.kai.matchengine.match.EngineRegistry;
 import com.kai.matchengine.match.SystemTimeSource;
 import com.kai.matchengine.orderbook.Side;
@@ -398,6 +399,45 @@ class SbeIngressTest {
         assertThrows(
                 IngressException.class,
                 () -> validator.validate(new PlaceOrder(1, 1, 1, 1, Side.BID, OrderType.FOK, 0, 1)))
+            .reason());
+  }
+
+  @Test
+  void encodeDecode_marketBidQuote_roundTrip() throws Exception {
+    PlaceOrder original =
+        new PlaceOrder(1, 11L, 110L, 4L, Side.BID, OrderType.MARKET, 0, 10_000, QtyUnit.QUOTE);
+    PlaceOrder decoded = assertInstanceOf(PlaceOrder.class, codec.decode(encoder.encode(original)));
+    assertEquals(QtyUnit.QUOTE, decoded.qtyUnit());
+    assertEquals(10_000L, decoded.qty());
+    validator.validate(decoded);
+  }
+
+  @Test
+  void encodeDecode_omittedQtyUnit_isBase() throws Exception {
+    PlaceOrder original = new PlaceOrder(1, 12L, 120L, 4L, Side.ASK, OrderType.MARKET, 0, 5);
+    PlaceOrder decoded = assertInstanceOf(PlaceOrder.class, codec.decode(encoder.encode(original)));
+    assertEquals(QtyUnit.BASE, decoded.qtyUnit());
+    validator.validate(decoded);
+  }
+
+  @Test
+  void validator_quoteUnit_onlyMarketBid() throws Exception {
+    validator.validate(new PlaceOrder(1, 1, 1, 1, Side.BID, OrderType.MARKET, 0, 100, QtyUnit.QUOTE));
+    assertEquals(
+        IngressRejectReason.INVALID_QTY,
+        assertThrows(
+                IngressException.class,
+                () ->
+                    validator.validate(
+                        new PlaceOrder(1, 1, 1, 1, Side.ASK, OrderType.MARKET, 0, 100, QtyUnit.QUOTE)))
+            .reason());
+    assertEquals(
+        IngressRejectReason.INVALID_QTY,
+        assertThrows(
+                IngressException.class,
+                () ->
+                    validator.validate(
+                        new PlaceOrder(1, 1, 1, 1, Side.BID, OrderType.LIMIT, 100, 1, QtyUnit.QUOTE)))
             .reason());
   }
 
