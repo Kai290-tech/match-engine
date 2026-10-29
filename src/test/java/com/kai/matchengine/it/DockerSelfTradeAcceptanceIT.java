@@ -6,6 +6,7 @@ import static org.junit.jupiter.api.Assertions.assertNotNull;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 import static org.junit.jupiter.api.Assumptions.assumeTrue;
 
+import com.kai.matchengine.event.inbound.CancelOrder;
 import com.kai.matchengine.event.inbound.CreateSymbol;
 import com.kai.matchengine.event.inbound.OrderType;
 import com.kai.matchengine.event.inbound.PlaceOrder;
@@ -199,6 +200,86 @@ class DockerSelfTradeAcceptanceIT {
     assertFalse(tradeForTaker(fok));
     assertEquals(5L, book(registry, symbolId).get(ownAsk).qty());
     assertEquals(4L, book(registry, symbolId).get(behind).qty());
+
+    send(encoder.encode(new CancelOrder(symbolId, req++, ownAsk, 1)));
+    send(encoder.encode(new CancelOrder(symbolId, req++, behind, 2)));
+    await(fatal, () -> book(registry, symbolId).isEmpty());
+
+    long otherBid = 510;
+    long ownBid = 511;
+    send(encoder.encode(new PlaceOrder(symbolId, req++, otherBid, 2, Side.BID, OrderType.LIMIT, 100, 2)));
+    send(encoder.encode(new PlaceOrder(symbolId, req++, ownBid, 1, Side.BID, OrderType.LIMIT, 100, 5)));
+    await(fatal, () -> book(registry, symbolId).contains(otherBid) && book(registry, symbolId).contains(ownBid));
+    long sell = 610;
+    send(encoder.encode(new PlaceOrder(symbolId, req++, sell, 1, Side.ASK, OrderType.LIMIT, 100, 6)));
+    await(fatal, () -> place(sell) != null && tradeMakerQty(sell, otherBid, 100, 2) && cancelledRemainder(sell));
+    PlaceView sold = place(sell);
+    assertTrue(sold.accepted(), sold.toString());
+    assertEquals(2L, sold.filledQty());
+    assertFalse(sold.resting());
+    assertFalse(tradeMaker(sell, ownBid));
+    assertFalse(book(registry, symbolId).contains(otherBid));
+    assertEquals(5L, book(registry, symbolId).get(ownBid).qty());
+    assertFalse(book(registry, symbolId).contains(sell));
+
+    send(encoder.encode(new CancelOrder(symbolId, req++, ownBid, 1)));
+    await(fatal, () -> book(registry, symbolId).isEmpty());
+
+    long nearAsk = 520;
+    long farAsk = 521;
+    send(encoder.encode(new PlaceOrder(symbolId, req++, nearAsk, 2, Side.ASK, OrderType.LIMIT, 100, 2)));
+    send(encoder.encode(new PlaceOrder(symbolId, req++, farAsk, 1, Side.ASK, OrderType.LIMIT, 120, 5)));
+    await(fatal, () -> book(registry, symbolId).contains(nearAsk) && book(registry, symbolId).contains(farAsk));
+    long restBid = 620;
+    send(encoder.encode(new PlaceOrder(symbolId, req++, restBid, 1, Side.BID, OrderType.LIMIT, 110, 6)));
+    await(fatal, () -> place(restBid) != null && tradeMakerQty(restBid, nearAsk, 100, 2) && book(registry, symbolId).contains(restBid));
+    PlaceView rested = place(restBid);
+    assertTrue(rested.accepted(), rested.toString());
+    assertEquals(2L, rested.filledQty());
+    assertEquals(4L, rested.remainingQty());
+    assertTrue(rested.resting());
+    assertFalse(tradeMaker(restBid, farAsk));
+    assertEquals(4L, book(registry, symbolId).get(restBid).qty());
+    assertEquals(110L, book(registry, symbolId).get(restBid).priceTick());
+    assertEquals(5L, book(registry, symbolId).get(farAsk).qty());
+    assertEquals(120L, book(registry, symbolId).get(farAsk).priceTick());
+
+    send(encoder.encode(new CancelOrder(symbolId, req++, restBid, 1)));
+    send(encoder.encode(new CancelOrder(symbolId, req++, farAsk, 1)));
+    await(fatal, () -> book(registry, symbolId).isEmpty());
+
+    long iocOther = 530;
+    long iocOwn = 531;
+    send(encoder.encode(new PlaceOrder(symbolId, req++, iocOther, 2, Side.ASK, OrderType.LIMIT, 100, 2)));
+    send(encoder.encode(new PlaceOrder(symbolId, req++, iocOwn, 1, Side.ASK, OrderType.LIMIT, 100, 5)));
+    await(fatal, () -> book(registry, symbolId).contains(iocOther) && book(registry, symbolId).contains(iocOwn));
+    long ioc = 630;
+    send(encoder.encode(new PlaceOrder(symbolId, req++, ioc, 1, Side.BID, OrderType.IOC, 100, 6)));
+    await(fatal, () -> place(ioc) != null && tradeMakerQty(ioc, iocOther, 100, 2) && cancelledRemainder(ioc));
+    PlaceView iocPlace = place(ioc);
+    assertEquals(2L, iocPlace.filledQty());
+    assertFalse(iocPlace.resting());
+    assertFalse(tradeMaker(ioc, iocOwn));
+    assertEquals(5L, book(registry, symbolId).get(iocOwn).qty());
+    assertFalse(book(registry, symbolId).contains(ioc));
+
+    send(encoder.encode(new CancelOrder(symbolId, req++, iocOwn, 1)));
+    await(fatal, () -> book(registry, symbolId).isEmpty());
+
+    long marketOther = 540;
+    long marketOwn = 541;
+    send(encoder.encode(new PlaceOrder(symbolId, req++, marketOther, 2, Side.ASK, OrderType.LIMIT, 100, 2)));
+    send(encoder.encode(new PlaceOrder(symbolId, req++, marketOwn, 1, Side.ASK, OrderType.LIMIT, 100, 5)));
+    await(fatal, () -> book(registry, symbolId).contains(marketOther) && book(registry, symbolId).contains(marketOwn));
+    long market = 640;
+    send(encoder.encode(new PlaceOrder(symbolId, req++, market, 1, Side.BID, OrderType.MARKET, 0, 6)));
+    await(fatal, () -> place(market) != null && tradeMakerQty(market, marketOther, 100, 2) && cancelledRemainder(market));
+    PlaceView marketPlace = place(market);
+    assertEquals(2L, marketPlace.filledQty());
+    assertFalse(marketPlace.resting());
+    assertFalse(tradeMaker(market, marketOwn));
+    assertEquals(5L, book(registry, symbolId).get(marketOwn).qty());
+    assertFalse(book(registry, symbolId).contains(market));
     assertEquals(null, fatal.get());
   }
 

@@ -127,6 +127,113 @@ class SelfTradePreventionTest {
     assertEquals(4L, engine.book().get(3).qty());
   }
 
+  @Test
+  void f30_sellFillsOtherBidsThenStopsAtOwnBid() {
+    MatchingEngine engine = new MatchingEngine("S-1", () -> 1L);
+    engine.apply(new PlaceOrder(1, 1, 1, 2, Side.BID, OrderType.LIMIT, 100, 2));
+    engine.apply(new PlaceOrder(1, 2, 2, 1, Side.BID, OrderType.LIMIT, 100, 5));
+
+    List<OutboundEvent> out =
+        engine.apply(new PlaceOrder(1, 3, 30, 1, Side.ASK, OrderType.LIMIT, 100, 6));
+
+    List<Trade> trades = trades(out);
+    assertEquals(1, trades.size());
+    assertEquals(1L, trades.get(0).makerOrderId());
+    assertEquals(2L, trades.get(0).qty());
+    assertEquals(100L, trades.get(0).priceTick());
+    CommandResult.Place place = placeResult(out);
+    assertTrue(place.accepted());
+    assertEquals(2L, place.filledQty());
+    assertEquals(0L, place.remainingQty());
+    assertFalse(place.resting());
+    assertEquals(OrderUpdateType.CANCELLED_REMAINDER, takerUpdate(out, 30L));
+    assertFalse(engine.book().contains(1));
+    assertEquals(5L, engine.book().get(2).qty());
+    assertFalse(engine.book().contains(30));
+  }
+
+  @Test
+  void f32_fokSellIgnoresQuantityBehindOwnBid() {
+    MatchingEngine engine = new MatchingEngine("S-1", () -> 1L);
+    engine.apply(new PlaceOrder(1, 1, 1, 2, Side.BID, OrderType.LIMIT, 100, 2));
+    engine.apply(new PlaceOrder(1, 2, 2, 1, Side.BID, OrderType.LIMIT, 100, 5));
+    engine.apply(new PlaceOrder(1, 3, 3, 2, Side.BID, OrderType.LIMIT, 100, 4));
+
+    List<OutboundEvent> blocked =
+        engine.apply(new PlaceOrder(1, 4, 40, 1, Side.ASK, OrderType.FOK, 100, 4));
+    assertTrue(blocked.stream().noneMatch(Trade.class::isInstance));
+    assertEquals(0L, placeResult(blocked).filledQty());
+    assertEquals(2L, engine.book().get(1).qty());
+    assertEquals(5L, engine.book().get(2).qty());
+    assertEquals(4L, engine.book().get(3).qty());
+
+    List<OutboundEvent> filled =
+        engine.apply(new PlaceOrder(1, 5, 41, 1, Side.ASK, OrderType.FOK, 100, 2));
+    List<Trade> trades = trades(filled);
+    assertEquals(1, trades.size());
+    assertEquals(1L, trades.get(0).makerOrderId());
+    assertEquals(2L, trades.get(0).qty());
+    assertFalse(engine.book().contains(1));
+    assertEquals(5L, engine.book().get(2).qty());
+    assertEquals(4L, engine.book().get(3).qty());
+  }
+
+  @Test
+  void f30_limitRestsWhenOwnOrderDoesNotCross() {
+    MatchingEngine engine = new MatchingEngine("S-1", () -> 1L);
+    engine.apply(new PlaceOrder(1, 1, 1, 2, Side.ASK, OrderType.LIMIT, 100, 2));
+    engine.apply(new PlaceOrder(1, 2, 2, 1, Side.ASK, OrderType.LIMIT, 120, 5));
+
+    List<OutboundEvent> out =
+        engine.apply(new PlaceOrder(1, 3, 30, 1, Side.BID, OrderType.LIMIT, 110, 6));
+
+    List<Trade> trades = trades(out);
+    assertEquals(1, trades.size());
+    assertEquals(1L, trades.get(0).makerOrderId());
+    assertEquals(2L, trades.get(0).qty());
+    assertEquals(100L, trades.get(0).priceTick());
+    CommandResult.Place place = placeResult(out);
+    assertTrue(place.accepted());
+    assertEquals(2L, place.filledQty());
+    assertEquals(4L, place.remainingQty());
+    assertTrue(place.resting());
+    assertEquals(OrderUpdateType.RESTING, takerUpdate(out, 30L));
+    assertFalse(engine.book().contains(1));
+    assertEquals(4L, engine.book().get(30).qty());
+    assertEquals(110L, engine.book().get(30).priceTick());
+    assertEquals(5L, engine.book().get(2).qty());
+    assertEquals(120L, engine.book().get(2).priceTick());
+  }
+
+  @Test
+  void f30_iocAndMarketBaseStopAtOwnOrder() {
+    MatchingEngine ioc = new MatchingEngine("S-1", () -> 1L);
+    ioc.apply(new PlaceOrder(1, 1, 1, 2, Side.ASK, OrderType.LIMIT, 100, 2));
+    ioc.apply(new PlaceOrder(1, 2, 2, 1, Side.ASK, OrderType.LIMIT, 100, 5));
+    List<OutboundEvent> iocOut =
+        ioc.apply(new PlaceOrder(1, 3, 30, 1, Side.BID, OrderType.IOC, 100, 6));
+    assertEquals(1, trades(iocOut).size());
+    assertEquals(2L, trades(iocOut).get(0).qty());
+    assertEquals(2L, placeResult(iocOut).filledQty());
+    assertFalse(placeResult(iocOut).resting());
+    assertEquals(OrderUpdateType.CANCELLED_REMAINDER, takerUpdate(iocOut, 30L));
+    assertEquals(5L, ioc.book().get(2).qty());
+    assertFalse(ioc.book().contains(30));
+
+    MatchingEngine market = new MatchingEngine("S-1", () -> 1L);
+    market.apply(new PlaceOrder(1, 1, 1, 2, Side.ASK, OrderType.LIMIT, 100, 2));
+    market.apply(new PlaceOrder(1, 2, 2, 1, Side.ASK, OrderType.LIMIT, 100, 5));
+    List<OutboundEvent> marketOut =
+        market.apply(new PlaceOrder(1, 3, 31, 1, Side.BID, OrderType.MARKET, 0, 6));
+    assertEquals(1, trades(marketOut).size());
+    assertEquals(2L, trades(marketOut).get(0).qty());
+    assertEquals(2L, placeResult(marketOut).filledQty());
+    assertFalse(placeResult(marketOut).resting());
+    assertEquals(OrderUpdateType.CANCELLED_REMAINDER, takerUpdate(marketOut, 31L));
+    assertEquals(5L, market.book().get(2).qty());
+    assertFalse(market.book().contains(31));
+  }
+
   private static List<Trade> trades(List<OutboundEvent> out) {
     return out.stream().filter(Trade.class::isInstance).map(Trade.class::cast).toList();
   }
