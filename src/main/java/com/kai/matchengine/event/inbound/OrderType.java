@@ -8,5 +8,7 @@ public enum OrderType {
   /** 限价立即成交：剩余不入簿。 */
   IOC,
   /** 限价全部成交，否则一笔不成交。 */
-  FOK
+  FOK,
+  /** 只做 Maker。会吃单则整单取消，否则入簿。 */
+  POST_ONLY
 }

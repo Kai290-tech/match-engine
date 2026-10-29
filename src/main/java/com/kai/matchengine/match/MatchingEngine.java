@@ -203,6 +203,29 @@ public final class MatchingEngine {
       return List.copyOf(out);
     }
 
+    if (cmd.orderType() == OrderType.POST_ONLY) {
+      if (crosses(cmd)) {
+        cancelMarketRemainder(cmd, 0L, out);
+        rememberPlace(cmd);
+        out.add(
+            CommandResult.Place.ok(
+                cmd.clientRequestId(), now(), symbol, cmd.orderId(), 0L, 0L, false));
+        return List.copyOf(out);
+      }
+      if (!book.hasCapacityForNewOrder()) {
+        out.add(
+            CommandResult.Place.reject(
+                cmd.clientRequestId(), now(), symbol, cmd.orderId(), RejectReason.BOOK_FULL));
+        return List.copyOf(out);
+      }
+      restLimit(cmd, cmd.qty(), 0L, out);
+      rememberPlace(cmd);
+      out.add(
+          CommandResult.Place.ok(
+              cmd.clientRequestId(), now(), symbol, cmd.orderId(), 0L, cmd.qty(), true));
+      return List.copyOf(out);
+    }
+
     long remaining = cmd.qty();
     long filled = 0L;
     // 只有市价买单、且数量单位为计价预算时，才按预算截断。
@@ -472,7 +495,10 @@ public final class MatchingEngine {
 
   /** LIMIT、IOC 与 FOK 必须带正价格；MARKET 忽略价格。 */
   private static boolean requiresPrice(OrderType orderType) {
-    return orderType == OrderType.LIMIT || orderType == OrderType.IOC || orderType == OrderType.FOK;
+    return orderType == OrderType.LIMIT
+        || orderType == OrderType.IOC
+        || orderType == OrderType.FOK
+        || orderType == OrderType.POST_ONLY;
   }
 
   private boolean crosses(PlaceOrder cmd) {
