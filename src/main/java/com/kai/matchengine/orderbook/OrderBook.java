@@ -153,6 +153,38 @@ public final class OrderBook {
     return false;
   }
 
+  /**
+   * 沿成交顺序，碰到同一用户的挂单之前，他人可交叉数量是否不少于 {@code qty}。不修改簿。
+   * 自己的挂单及其后面的数量都不计入。
+   */
+  public boolean canFillBeforeSelf(Side takerSide, long takerUserId, long limitPrice, long qty) {
+    if (qty <= 0) {
+      return false;
+    }
+    long got = 0L;
+    NavigableMap<Long, PriceLevel> opposite = takerSide == Side.BID ? asks : bids;
+    for (PriceLevel level : opposite.values()) {
+      long priceTick = level.priceTick();
+      if (takerSide == Side.BID) {
+        if (priceTick > limitPrice) {
+          break;
+        }
+      } else if (priceTick < limitPrice) {
+        break;
+      }
+      for (OrderNode node = level.head(); node != null; node = node.next) {
+        if (node.userId() == takerUserId) {
+          return got >= qty;
+        }
+        got += node.qty();
+        if (got >= qty) {
+          return true;
+        }
+      }
+    }
+    return got >= qty;
+  }
+
   /** 买盘深度，最优价在前。 */
   public List<DepthLevel> bidDepth() {
     return copyDepth(bids);
